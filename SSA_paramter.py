@@ -16,9 +16,10 @@ L = 0
 for i in range(K):
     L = L + L_node[i]
 # size of finite field
-p = 3
+q = 3
 # the total energy
 E_total = 1e3
+SNR = E_total/(N*K)
 
 # NC generator matrix
 G = np.array([[1, 0, 0, 1, 0],
@@ -73,16 +74,14 @@ def index_S(j, l):
     return S
 
 # the index of stream at BS j which consists of the stream I(i,l)
-#------------Something May be Wrong in the list eta !!!
 def index_eta(i,l,j):
-    eta = []
+    eta = None # the column are all zeros
     for ll in range(L_node[j]): # ll is the index of stream in BS j
         if G[index_I(j,ll)][index_I(i,l)] != 0:
-            eta.append(ll)
-    if len(eta) != 1:
-        raise Exception('Error in find eta!!!')
-    else:
-        return eta[0]
+            eta = ll
+            break
+
+    return eta
 
 
 if __name__ == '__main__':
