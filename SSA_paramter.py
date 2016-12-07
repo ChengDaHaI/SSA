@@ -18,8 +18,9 @@ for i in range(K):
 # size of finite field
 q = 3
 # the total energy
-E_total = 1e3
-SNR = E_total/(N*K)
+E_total = 1e4
+N_0 = 1
+#SNR = E_total/(N_0*K)
 
 # NC generator matrix
 G = np.array([[1, 0, 0, 1, 0],
