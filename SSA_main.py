@@ -590,7 +590,7 @@ def sum_rate_optimize_beta_precoding(H, SNR):
         beta_free = 4
 
     # compute the initial sum rate with random precoding vector and identity Beta
-    Beta_init = [1] * (beta_free + beta_fix)
+    Beta_init = [1] * (beta_free )
     if K == 3:
         # Beta = list(np.random.rand(10))
         '''
@@ -631,10 +631,10 @@ def sum_rate_optimize_beta_precoding(H, SNR):
 
     # optimize Beta with differential evolution algorithm
     beta_test = [1] * beta_free
-    sum_rate_opt_beta_vec_test = Precoding_Direction_optimize(H, beta_test, SNR, 50)
+    sum_rate_opt_beta_vec_test = Precoding_Direction_optimize(H, beta_test, SNR, 500)
     diff_evolu_func = lambda beta: -Precoding_Direction_optimize(H, beta, SNR, 50)
     beta_ranges = ((0.1, 2.0),) * beta_free
-    diff_evolu_res = optimize.differential_evolution(diff_evolu_func, beta_ranges, maxiter = 200, disp= False)
+    diff_evolu_res = optimize.differential_evolution(diff_evolu_func, beta_ranges, maxiter = 50, disp= False)
     print 'Beta Differential Evolution Status:', diff_evolu_res.success
     sum_rate_opt_beta_vec = -diff_evolu_res.fun
 
@@ -667,7 +667,7 @@ if __name__ == '__main__':
 
         for ii in range(iter):
             # set random seed
-            np.random.seed()
+            np.random.seed(1)
             # random channel matrix
             H = np.random.randn(K*M, K*N)
             #res = p.apply_async(precoding_vector_optimize_DE, (H, snr))
