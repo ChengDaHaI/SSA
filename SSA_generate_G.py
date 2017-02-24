@@ -9,10 +9,12 @@
 
 import os, time
 import matplotlib.pyplot as pyplot
+import copy
 from multiprocessing import Pool
 from scipy import optimize
 from SSA_paramter import *
 from functools import reduce
+import networkx as nx
 
 
 
@@ -20,10 +22,9 @@ from functools import reduce
 #           Besides, we now only consider the case of each elements being 1.
 # Input   : M, the number of antenna in the BS; K, the number of users; L_node, list of the number of streams in each users
 # Output  : all feasible G_l matrix(stacked row by row) in a BS and the number of G_l
+def generate_G_l():
 
-def generate_G_l(M = M, K = K, L_node = L_node):
-
-    L = sum(L_node)
+    # L = sum(L_node)
     G_l = np.zeros((M, L))
 
     # the number of possible block matrix in each ``block''
@@ -95,12 +96,13 @@ def generate_G_l(M = M, K = K, L_node = L_node):
 
     return G_l_full, num_G_l
 
+
 # Function: Output a possible (complete) G matrix with shape(K*M, K*N) from the input -- a index.
 #           The range of ind_G is from 0 to 36 * 36 * 36 -1 (in the case of 3*3 of our paper)
-# Input   :
-# Output  :
-
-def generate_G_complete(ind_G, G_l_full, num_G_l, M, K, L):
+# Input   : the index, ind_G; all feasible block matrix at BS l, G_l_full;
+#           number of feasible block matrix, num_G_l
+# Output  : complete G matrix associated with ind_G, G_comp; or False if G_comp is rank-deficient.
+def generate_G_complete(ind_G, G_l_full, num_G_l):
 
     if ind_G >= num_G_l ** K:
         raise Exception('Wrong index of G! Exceed the range!')
@@ -143,17 +145,151 @@ def generate_G_complete(ind_G, G_l_full, num_G_l, M, K, L):
         return False
 
 
+# Function: converte adjacency matrix into a list of cycle basis in the help pf networkx.cycle_basis()
+# Input   : biadjacency matrix G
+# Output  : cycle basis  list of G
+def cycles_in_G(G_adj):
+    G_edges = nx.Graph()
+    for i in range(L):
+        for j in range(L):
+            if G_adj[i, j] != 0:
+                # the index of source stream node is j and the
+                # index of received spatial stream node is i + L
+                G_edges.add_edge(i + L, j)
+    # find all cycle basis of G matrix
+    cycle_node_list = list(nx.cycle_basis(G_edges))
+    num_cycle = len(cycle_node_list)
+    return cycle_node_list, num_cycle
+
+
+# Function: For given cycles in the graph of G, calculate the constraints induced by cycles.
+# Input   : biadjacency matrix, G; cycle basis list of G, cycle_list
+# Output  : number of all beta variables, index of fixed beta variables, and the constraints.
+def beta_constraint(G, cycle_list):
+
+    num_cyc = len(cycle_list)
+    # calculate the total beta
+    num_beta = 0
+    for l in range(sum(L_node[1:K])):
+        num_beta += sum(G[:,L_node[0] + l])
+
+    # store the beta equation constraints for each cycle,
+    # and the product of element of G. Note that g_prod is multiplied
+    # in the -----``RHS''----- of equation constraints.
+    beta_equa_list_left  = []
+    beta_equa_list_right = []
+    g_prod_list          = []
+    for ind_cyc in range(num_cyc):
+        cycle = cycle_list[ind_cyc]
+        cyc_len = len(cycle)
+        # index of received streams
+        t_ind_list = np.where(np.array(cycle) >= L)[0]
+        # index of source streams
+        p_ind_list = range(cyc_len)
+        for i in list(t_ind_list):
+            p_ind_list.remove(i)
+        # # source stream node
+        # p_node = np.array(cycle)[p_ind_list]
+        # # received stream node
+        # t_node = np.array(cycle)[p_ind_list]
+
+        # we begin to construct the equation constraints
+        # beta_left: list to store beta index of LHS
+        beta_left  = []
+        # beta_right: list to store beta index of RHS
+        beta_right = []
+        # product of elements of G in the equation constraints
+        g_prod = 1
+        for ind in list(t_ind_list):
+            t   = cycle[ind] - L
+            p_l = cycle[ind - 1]
+            if ind + 1 == len(cycle):
+                #the right index is the first index in cycle
+                p_r = cycle[0]
+            else:
+                p_r = cycle[ind + 1]
+            g_prod = g_prod * (G[t,p_l]/G[t,p_r])
+            # calculate the index of beta corresponding to t and p_l
+            if index_inv(p_l) != 0:
+                beta_ind = np.sum( G[0:t,:][:,L_node[0]:L] ) + np.sum(G[t,L_node[0]:p_l])
+                # beta_ind = sum(sum(G[0:t,:][:,sum(L_node[0:index_inv(p_l)]):L])) + G[t,sum(L_node[0:index_inv(p_l)]):p_l]
+                # Note that beta_ind of p_l is appended in beta_right list!!!
+                beta_right.append(beta_ind)
+            else:
+                pass
+            # calculate the index of beta corresponding to t and p_l
+            if index_inv(p_r) != 0:
+                beta_ind = np.sum(G[0:t, :][:, L_node[0]:L]) + np.sum(
+                    G[t, L_node[0]:p_r])
+                # beta_ind = sum(sum(G[0:t,:][:,sum(L_node[0:index_inv(p_r)]):L])) + G[t,sum(L_node[0:index_inv(p_r)]):p_r]
+                beta_left.append(beta_ind)
+            else:
+                pass
+        beta_equa_list_left.append(beta_left)
+        beta_equa_list_right.append(beta_right)
+        g_prod_list.append(g_prod)
+
+    # WE are now ready to compute the fixed beta variables
+    beta_equa_len = [0] * num_cyc
+    # beta_fixed stored in a list
+    # the equation to calculate the fixed beta is stored in beta_equa_constr
+    #TODO Try to store it in a dict or class!!!
+    beta_fixed    = []
+    beta_equa_constr = []
+    for ind_cyc in range(num_cyc):
+            beta_equa_len[ind_cyc] = len(beta_equa_list_left[ind_cyc])
+    for ind in range(num_cyc):
+        # find the index of first min len equation
+        ind_min_len_equa = beta_equa_len.index(min(beta_equa_len))
+        # ind_min_len_equa = beta_equa_len[beta_equa_len.index(min(beta_equa_len))]
+        # we choose the leftest index in the left side of the equation as the fixed beta.
+        if ind == 0:
+            beta_fixed.append(beta_equa_list_left[ind_min_len_equa][0])
+            beta_equa_list_left[ind_min_len_equa].remove(beta_fixed[ind])
+            beta_equa_constr.append( [beta_equa_list_left[ind_min_len_equa],
+                                      beta_equa_list_right[ind_min_len_equa], 'left'] )
+            # beta_fixed[ind,:] = np.array([min(beta_equa_list_left[ind_min_len_equa]), ind_min_len_equa])
+        else:
+            equa_list = beta_equa_list_left[ind_min_len_equa] + beta_equa_list_right[ind_min_len_equa]
+            for ii in list(beta_fixed[0:ind]):
+                equa_list.remove(ii)
+            beta_fixed.append(equa_list[0])
+            if equa_list[0] in beta_equa_list_left[ind_min_len_equa]:
+                # the fixed beta is in the left of equation constraint
+                beta_equa_list_left[ind_min_len_equa].remove(beta_fixed[ind])
+                beta_equa_constr.append([beta_equa_list_left[ind_min_len_equa],
+                                      beta_equa_list_right[ind_min_len_equa], 'left'])
+            elif equa_list[0] in beta_equa_list_right[ind_min_len_equa]:
+                # the fixed beta is in the right of equation constraint
+                beta_equa_list_right[ind_min_len_equa].remove(beta_fixed[ind])
+                beta_equa_constr.append([beta_equa_list_left[ind_min_len_equa],
+                                         beta_equa_list_right[ind_min_len_equa], 'right'])
+        # remove the used equation list
+        beta_equa_len.pop(ind_min_len_equa)
+        beta_equa_list_left.pop(ind_min_len_equa)
+        beta_equa_list_right.pop(ind_min_len_equa)
+
+    # up to now, we have already calculated all data of beta constraints
+    return num_beta, beta_fixed, beta_equa_constr
+
+
+
 if __name__ == "__main__":
 
-    G_l_full, num_G_l = generate_G_l(M, K, L_node)
+    G_l_full, num_G_l = generate_G_l()
     # print 'all possible G_l matrix:\n', res
     if K == 3:
         ind_G = 36 * 36 * 10 + 23
     if K ==2:
         ind_G = 6 * 2 + 4
     num_fea_G = 0
-    for ind_G in range(num_G_l ** K):
-        G_comp = generate_G_complete(ind_G, G_l_full, num_G_l, M, K, L)
-        if type(G_comp) != bool:
-            num_fea_G += 1
-    print 'the number of full column rank complete G is:\n', num_fea_G
+    # for ind_G in range(num_G_l ** K):
+    #     G_comp = generate_G_complete(ind_G, G_l_full, num_G_l)
+    #     if type(G_comp) != bool:
+    #         num_fea_G += 1
+    # print 'the number of full column rank complete G is:\n', num_fea_G
+
+    cycle_node_list, num_cycle = cycles_in_G(G)
+    print cycle_node_list, num_cycle
+    print beta_constraint(G, cycle_node_list)
+
