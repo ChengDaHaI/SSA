@@ -4,6 +4,7 @@ import matplotlib.pyplot as pyplot
 from multiprocessing import Pool
 from scipy import optimize
 from SSA_paramter import *
+from SSA_generate_G import *
 
 
 
@@ -724,23 +725,6 @@ def generation_matrix_optimize(G_Full,H, SNR):
                 raise
             print "Full G:\n",G_Full[i * 6:(i + 1) * 6]
             Beta_init = [1] * (beta_free)
-            if K == 3:
-                # Beta = list(np.random.rand(10))
-                '''
-                Beta_init.insert(5, 1)
-                Beta_init.insert(6, 1)
-                # compute the two constrainted beta,  i.e., beta_6 and beta_7
-                Beta_init[5] = Beta_init[1] * Beta_init[3] * G[5][1]/ (Beta_init[0] * G[5][5])
-                Beta_init[6] = Beta_init[3] * Beta_init[4] * Beta_init[7] * G[4][6]/ (Beta_init[0] * Beta_init[2] * G[4][0])
-                '''
-                Beta_init.insert(1, 1)
-                Beta_init.insert(2, 1)
-                Beta_init.insert(6, 1)
-                # compute the three constrainted beta,  i.e., beta_2, beta_3, and beta_7
-                Beta_init[1] = Beta_init[8] * G[5][0] / G[5][5]
-                Beta_init[2] = Beta_init[5] * G[1][4] / G[1][1]
-                Beta_init[6] = Beta_init[5] * Beta_init[8] * G[4][4] / (Beta_init[7] * G[4][5])
-
             H_tilde = Augmented_chan_matrix(H, G, G_extra, Beta_init)
             # find the nullspace of H_tilde
             [s, v, d] = np.linalg.svd(H_tilde)
@@ -771,21 +755,156 @@ def generation_matrix_optimize(G_Full,H, SNR):
     return sum_rate_opt_G, sum_rate_init, 0
 
 
+'''
+Function: optimize precoding vector and beta with differential evolution (scipy)
+Input   : important paprameters are G_adj,G_ext, vect_coeff, Beta_init, beta_fixed, beta_equa_constr
+Output  : optimal (maximum) sum rate
+'''
+
+def general_sum_rate_func(H, G_adj,G_ext, Beta_init, beta_fixed, beta_equa_constr, vect_coeff, SNR):
+    Beta_init = list(Beta_init)
+    for ind in beta_fixed:
+        Beta_init.insert(ind, 1)
+    # ready to calculate the fixed beta
+    for ind in range(len(beta_fixed)):
+        beta_constr = beta_equa_constr[ind]
+        if beta_constr[3] == 'left':
+            for ii in beta_constr[1]:
+                Beta_init[beta_fixed[ind]] *= Beta_init[ii]
+            for ii in beta_constr[0]:
+                Beta_init[beta_fixed[ind]] /= Beta_init[ii]
+            Beta_init[beta_fixed[ind]] *= beta_constr[2]
+        elif beta_constr[3] == 'right':
+            for ii in beta_constr[0]:
+                Beta_init[beta_fixed[ind]] *= Beta_init[ii]
+            for ii in beta_constr[1]:
+                Beta_init[beta_fixed[ind]] /= Beta_init[ii]
+            Beta_init[beta_fixed[ind]] /= beta_constr[2]
+        else:
+            raise Exception('Wrong string in beta constraint!!!')
+    H_tilde = Augmented_chan_matrix(H, G_adj, G_ext, Beta_init)
+    # find the nullspace of H_tilde
+    [s, v, d] = np.linalg.svd(H_tilde)
+    # compute the orthogonal basis for nullspace
+    # dimen_Null = d.shape[0] - len(v)
+    basis_Null = d[len(v):d.shape[0], :]
+    basis_Null = np.transpose(np.array(basis_Null))
+    sum_rate_opt_vec_beta = precoding_vector_coefficient(G_adj,vect_coeff, basis_Null, H, SNR)
+    return sum_rate_opt_vec_beta
+
+
+# Function: For given G matrix (and G_extra), calculate the
+#           (sub)optimal sum-rate by optimizing precoding vector P and beta.
+# Input   :
+# Output  :
+def general_G_bete_vec_optimize(G_adj, G_ext, H, SNR, is_beta_ones = False):
+
+    # find all cycles in G_adj
+    cycle_node_list, num_cycle = cycles_in_G(G_adj)
+    # find the number of beta variables, the index list of fixed beta, and the constraint to fixed beta
+    num_beta, beta_fixed, beta_equa_constr = beta_constraint(G_adj, cycle_node_list)
+    t0 = time.time()
+    # find optimal sum rate by optimizing beta and P with DE
+    if is_beta_ones == True:
+        Beta_init = [1.0] * (num_beta - len(beta_fixed))
+        for ind in beta_fixed:
+            Beta_init.insert(ind,1)
+        # ready to calculate the fixed beta
+        for ind in range(len(beta_fixed)):
+            beta_constr = beta_equa_constr[ind]
+            if beta_constr[3] == 'left':
+                for ii in beta_constr[1]:
+                    Beta_init[beta_fixed[ind]] *= Beta_init[ii]
+                for ii in beta_constr[0]:
+                    Beta_init[beta_fixed[ind]] /= Beta_init[ii]
+                Beta_init[beta_fixed[ind]] *= beta_constr[2]
+            elif beta_constr[3] == 'right':
+                for ii in beta_constr[0]:
+                    Beta_init[beta_fixed[ind]] *= Beta_init[ii]
+                for ii in beta_constr[1]:
+                    Beta_init[beta_fixed[ind]] /= Beta_init[ii]
+                Beta_init[beta_fixed[ind]] /= beta_constr[2]
+            else:
+                raise Exception('Wrong string in beta constraint!!!')
+        H_tilde = Augmented_chan_matrix(H, G_adj, G_ext, Beta_init)
+        # find the nullspace of H_tilde
+        [s, v, d] = np.linalg.svd(H_tilde)
+        # compute the orthogonal basis for nullspace
+        dimen_Null = d.shape[0] - len(v)
+        basis_Null = d[len(v):d.shape[0], :]
+        basis_Null = np.transpose(np.array(basis_Null))
+        # optimize precodeing vector with differential evolution algorithm and identity Beta
+        coef_DE_port = lambda x: -precoding_vector_coefficient(G_adj, x[0:dimen_Null], basis_Null, H, SNR)
+        pranges = ((0.0, 1.0),) * (dimen_Null)
+        Result_DE = optimize.differential_evolution(coef_DE_port, pranges, maxiter=50, disp=False, polish=True)
+        t1 = time.time()
+        print 'Precodeing Vector Differential Evolution Status:', Result_DE.success, 'Iteration:', Result_DE.nit, 'Time Cost:', t1-t0
+        sum_rate_opt_vec = -Result_DE.fun
+        return sum_rate_opt_vec
+    elif is_beta_ones == False:
+        #TODO refine the part of code!!!
+        num_free_beta = num_beta - len(beta_fixed)
+        num_vect_basis = L * N - K * (L- L_node[0]) * M
+        diff_evolu_func = lambda beta_coeff: - general_sum_rate_func(H, G_adj, G_ext, beta_coeff[0:num_free_beta], beta_fixed, beta_equa_constr,
+                                                                               beta_coeff[num_free_beta: num_free_beta + num_vect_basis], SNR)
+        beta_ranges = ((0.1, 5.0),) * num_free_beta  + ((0.0, 1.0),) * num_vect_basis
+        diff_evolu_res = optimize.differential_evolution(diff_evolu_func, beta_ranges, maxiter=100, disp=False,polish=True)
+        sum_rate_opt_beta_vec = -diff_evolu_res.fun
+        t1 = time.time()
+        print '-----Beta & Vector Differential Evolution Status:', diff_evolu_res.success, 'Iteration:', diff_evolu_res.nit, 'Time Cost:', t1-t0
+        return sum_rate_opt_beta_vec
+    else:
+        raise Exception('Error occurs in is_beta_ones!!!')
+
+
+# Function: Optimize G matrix in 3 * 3 system
+# Input   :
+# Output  :
+def general_G_optimize(H, SNR):
+
+    # find all feasible block matrix G_l, and its number
+    G_l_full, num_G_l = generate_G_l()
+    G_l_full = G_l_full.astype(int)
+    # the number of all possible G_full
+    num_G_full = num_G_l ** K
+    # find the optimal G by brute-force, and its index
+    sum_rate_opt_G = 0
+    opt_ind_G =0
+    # specify the row list of G_adj and G_extra
+    # here we just choose one case (not all 3*3 = 9 cases)
+    sum_rate_temp = 0
+    G_row_list = range(0,sum(L_node_BS[0:2])) + range(2*M,2*M + L_node_BS[2])
+    G_ext_list = [sum(L_node_BS[0:2]),3*M-1]
+    for ind_G in range(num_G_full):
+        G_comp = generate_G_complete(ind_G, G_l_full, num_G_l)
+        if type(G_comp) != bool:
+            G_adj = G_comp[G_row_list,:]
+            G_ext = G_comp[G_ext_list,:]
+            sum_rate_temp = general_G_bete_vec_optimize(G_adj, G_ext, H, SNR, is_beta_ones=True)
+            print
+            if sum_rate_temp > sum_rate_opt_G:
+                sum_rate_opt_G = sum_rate_temp
+                opt_ind_G = ind_G
+    # choose the final G as comparison
+    sum_rate_rdm_G = sum_rate_temp
+    return sum_rate_rdm_G, sum_rate_opt_G, opt_ind_G
+
+
 if __name__ == '__main__':
 
 
     #print 'channel matrix:\n', H
     #print Bilinear_optimize(H,G)
 #    print Power_optimize(H,G)
-    SNR = [1e2* K, 1e3* K, 1e4* K, 1e5* K, 1e6* K]
-    #SNR = [1e6 * K]
+    #SNR = [1e2* K, 1e3* K, 1e4* K, 1e5* K, 1e6* K]
+    SNR = [1e5* K,1e6 * K]
     Rate_pow_opt_list = [0] * len(SNR)
     Rate_opt_list = [0] * len(SNR)
     Rate_init_list = [0] * len(SNR)
     Rate_opt_power_list = [0] * len(SNR)
     iter = 20
     print 'Parent Process %s.' % os.getpid()
-    p = Pool(20)
+    p = Pool(30)
 
     for i in range(len(SNR)):
         snr = SNR[i]
@@ -803,33 +922,30 @@ if __name__ == '__main__':
             print 'First elements of H:',H[0,0]
             print 'SNR:',10 * np.log10(snr),'dB,No.',ii,'channel:'
             # res = sum_rate_optimize_beta_precoding(G, H, snr)
-
-            res = p.apply_async(sum_rate_optimize_beta_precoding, (G, H, snr))
+            #res = p.apply_async(sum_rate_optimize_beta_precoding, (G, H, snr))
             #res = p.apply_async(generation_matrix_optimize, (np.array(list(G_2Full) + list(G_2Full_2)),H, snr))
 
+            #res_G_opt = general_G_optimize(H, snr)
+            res = p.apply_async(general_G_optimize, (H, snr))
             multiple_res.append(res)
-            # [sum_rate_opt, sum_rate_init] = res.get()
-            # [sum_rate_opt, sum_rate_init] = precoding_vector_optimize_DE(H, G, snr)
-            # rate0 = rate0 + sum_rate_opt
-            # rate1 = rate1 + sum_rate_init
         t2 = time.time()
         print "Total time cost:", (t2-t1),'s.'
         for res in multiple_res:
-            [sum_rate_opt, sum_rate_init, sum_rate_random_pow] = res.get()
+            [sum_rate_init, sum_rate_opt, opt_G_ind] = res.get()
             rate0 = rate0 + sum_rate_opt
             rate1 = rate1 + sum_rate_init
-            rate2 = rate2 + sum_rate_random_pow
+            rate2 = rate2 + opt_G_ind
         Rate_opt_list[i]  = rate0/iter
         Rate_init_list[i] = rate1/iter
         Rate_opt_power_list[i] = rate2/iter
 
     #pyplot.plot(10 * np.log10(SNR), Rate_pow_opt_list, 'rd-', label='Suboptimal P&Pow')
 
-    #pyplot.plot(10 * np.log10(SNR), Rate_init_list, 'b*-', label= 'Init G' )
-    #pyplot.plot(10 * np.log10(SNR), Rate_opt_list, 'go-', label= 'Opt G')
-    pyplot.plot(10 * np.log10(np.divide(SNR,K)), Rate_init_list, 'b*-', label='DE P')
-    pyplot.plot(10 * np.log10(np.divide(SNR,K)), Rate_opt_list, 'go-', label='DE Beta&P')
-    pyplot.plot(10 * np.log10(np.divide(SNR,K)), Rate_opt_power_list, 'kd-', label='Random P')
+    pyplot.plot(10 * np.log10(SNR), Rate_init_list, 'b*-', label= 'Init G' )
+    pyplot.plot(10 * np.log10(SNR), Rate_opt_list, 'go-', label= 'Opt G')
+    # pyplot.plot(10 * np.log10(np.divide(SNR,K)), Rate_init_list, 'b*-', label='DE P')
+    # pyplot.plot(10 * np.log10(np.divide(SNR,K)), Rate_opt_list, 'go-', label='DE Beta&P')
+    # pyplot.plot(10 * np.log10(np.divide(SNR,K)), Rate_opt_power_list, 'kd-', label='Random P')
     '''
     for i in range(len(SNR)):
         snr = SNR[i]

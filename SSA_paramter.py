@@ -403,8 +403,10 @@ else:
     # the number of antennas of each node
     N = 6 # transmitter
     M = 3 # receiver
-    # the number of spatial stream of each node
+    # the number of source stream of each user
     L_node = [3, 2, 2]
+    # the number of received stream of each BS
+    L_node_BS = [3, 2, 2]
     # the number of total spatial stream
     L = sum(L_node)
     # size of finite field

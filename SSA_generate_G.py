@@ -8,10 +8,6 @@
 # *************************
 
 import os, time
-import matplotlib.pyplot as pyplot
-import copy
-from multiprocessing import Pool
-from scipy import optimize
 from SSA_paramter import *
 from functools import reduce
 import networkx as nx
@@ -25,7 +21,7 @@ import networkx as nx
 def generate_G_l():
 
     # L = sum(L_node)
-    G_l = np.zeros((M, L))
+    G_l = np.zeros((M, L),np.int8)
 
     # the number of possible block matrix in each ``block''
     block_num_list = []
@@ -106,7 +102,7 @@ def generate_G_complete(ind_G, G_l_full, num_G_l):
 
     if ind_G >= num_G_l ** K:
         raise Exception('Wrong index of G! Exceed the range!')
-    G_comp = np.zeros((K * M, L))
+    G_comp = np.zeros((K * M, L),np.int8)
 
     # ind0 is the index of G_l in G_l_full of BS1. The remaining follows.
 
@@ -246,31 +242,36 @@ def beta_constraint(G, cycle_list):
         if ind == 0:
             beta_fixed.append(beta_equa_list_left[ind_min_len_equa][0])
             beta_equa_list_left[ind_min_len_equa].remove(beta_fixed[ind])
-            beta_equa_constr.append( [beta_equa_list_left[ind_min_len_equa],
-                                      beta_equa_list_right[ind_min_len_equa], 'left'] )
+            beta_equa_constr.append( [beta_equa_list_left[ind_min_len_equa], beta_equa_list_right[ind_min_len_equa],
+                                      g_prod_list[ind_min_len_equa], 'left'] )
             # beta_fixed[ind,:] = np.array([min(beta_equa_list_left[ind_min_len_equa]), ind_min_len_equa])
         else:
             equa_list = beta_equa_list_left[ind_min_len_equa] + beta_equa_list_right[ind_min_len_equa]
             for ii in list(beta_fixed[0:ind]):
-                equa_list.remove(ii)
+                if ii in equa_list:
+                    equa_list.remove(ii)
             beta_fixed.append(equa_list[0])
             if equa_list[0] in beta_equa_list_left[ind_min_len_equa]:
                 # the fixed beta is in the left of equation constraint
                 beta_equa_list_left[ind_min_len_equa].remove(beta_fixed[ind])
-                beta_equa_constr.append([beta_equa_list_left[ind_min_len_equa],
-                                      beta_equa_list_right[ind_min_len_equa], 'left'])
+                beta_equa_constr.append([beta_equa_list_left[ind_min_len_equa],beta_equa_list_right[ind_min_len_equa],
+                                         g_prod_list[ind_min_len_equa], 'left'])
             elif equa_list[0] in beta_equa_list_right[ind_min_len_equa]:
                 # the fixed beta is in the right of equation constraint
                 beta_equa_list_right[ind_min_len_equa].remove(beta_fixed[ind])
-                beta_equa_constr.append([beta_equa_list_left[ind_min_len_equa],
-                                         beta_equa_list_right[ind_min_len_equa], 'right'])
+                beta_equa_constr.append([beta_equa_list_left[ind_min_len_equa],beta_equa_list_right[ind_min_len_equa],
+                                         g_prod_list[ind_min_len_equa], 'right'])
+            else:
+                raise Exception('Wrong index in equa_list!!!')
         # remove the used equation list
         beta_equa_len.pop(ind_min_len_equa)
         beta_equa_list_left.pop(ind_min_len_equa)
         beta_equa_list_right.pop(ind_min_len_equa)
+        g_prod_list.pop(ind_min_len_equa)
 
     # up to now, we have already calculated all data of beta constraints
     return num_beta, beta_fixed, beta_equa_constr
+
 
 
 
@@ -283,11 +284,11 @@ if __name__ == "__main__":
     if K ==2:
         ind_G = 6 * 2 + 4
     num_fea_G = 0
-    # for ind_G in range(num_G_l ** K):
-    #     G_comp = generate_G_complete(ind_G, G_l_full, num_G_l)
-    #     if type(G_comp) != bool:
-    #         num_fea_G += 1
-    # print 'the number of full column rank complete G is:\n', num_fea_G
+    for ind_G in range(num_G_l ** K):
+        G_comp = generate_G_complete(ind_G, G_l_full, num_G_l)
+        if type(G_comp) != bool:
+            num_fea_G += 1
+    print 'the number of full column rank complete G is:\n', num_fea_G
 
     cycle_node_list, num_cycle = cycles_in_G(G)
     print cycle_node_list, num_cycle
