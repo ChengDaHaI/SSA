@@ -795,8 +795,8 @@ def general_sum_rate_func(H, G_adj,G_ext, Beta_init, beta_fixed, beta_equa_const
 
 # Function: For given G matrix (and G_extra), calculate the
 #           (sub)optimal sum-rate by optimizing precoding vector P and beta.
-# Input   :
-# Output  :
+# Input   : G, G_ext, channel matrix, SNR, option of beta
+# Output  : optimal sum rate
 def general_G_bete_vec_optimize(G_adj, G_ext, H, SNR, is_beta_ones = False):
 
     # find all cycles in G_adj
@@ -858,8 +858,8 @@ def general_G_bete_vec_optimize(G_adj, G_ext, H, SNR, is_beta_ones = False):
 
 
 # Function: Optimize G matrix in 3 * 3 system
-# Input   :
-# Output  :
+# Input   : channel matrix , SNR
+# Output  : sum rate of last feasible G, sum rate of optimal G, index of optimal G
 def general_G_optimize(H, SNR):
 
     # find all feasible block matrix G_l, and its number
@@ -881,7 +881,6 @@ def general_G_optimize(H, SNR):
             G_adj = G_comp[G_row_list,:]
             G_ext = G_comp[G_ext_list,:]
             sum_rate_temp = general_G_bete_vec_optimize(G_adj, G_ext, H, SNR, is_beta_ones=True)
-            print
             if sum_rate_temp > sum_rate_opt_G:
                 sum_rate_opt_G = sum_rate_temp
                 opt_ind_G = ind_G
