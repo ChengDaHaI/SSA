@@ -895,15 +895,15 @@ if __name__ == '__main__':
     #print 'channel matrix:\n', H
     #print Bilinear_optimize(H,G)
 #    print Power_optimize(H,G)
-    #SNR = [1e2* K, 1e3* K, 1e4* K, 1e5* K, 1e6* K]
-    SNR = [1e5* K,1e6 * K]
+    SNR = [1e2* K, 1e3* K, 1e4* K, 1e5* K, 1e6* K]
+    #SNR = [1e5* K,1e6 * K]
     Rate_pow_opt_list = [0] * len(SNR)
     Rate_opt_list = [0] * len(SNR)
     Rate_init_list = [0] * len(SNR)
     Rate_opt_power_list = [0] * len(SNR)
-    iter = 20
+    iter = 50
     print 'Parent Process %s.' % os.getpid()
-    p = Pool(30)
+    p = Pool(20)
 
     for i in range(len(SNR)):
         snr = SNR[i]
@@ -940,8 +940,8 @@ if __name__ == '__main__':
 
     #pyplot.plot(10 * np.log10(SNR), Rate_pow_opt_list, 'rd-', label='Suboptimal P&Pow')
 
-    pyplot.plot(10 * np.log10(SNR), Rate_init_list, 'b*-', label= 'Init G' )
-    pyplot.plot(10 * np.log10(SNR), Rate_opt_list, 'go-', label= 'Opt G')
+    pyplot.plot(10 * np.log10(np.divide(SNR,K)), Rate_init_list, 'b*-', label= 'Init G' )
+    pyplot.plot(10 * np.log10(np.divide(SNR,K)), Rate_opt_list, 'go-', label= 'Opt G')
     # pyplot.plot(10 * np.log10(np.divide(SNR,K)), Rate_init_list, 'b*-', label='DE P')
     # pyplot.plot(10 * np.log10(np.divide(SNR,K)), Rate_opt_list, 'go-', label='DE Beta&P')
     # pyplot.plot(10 * np.log10(np.divide(SNR,K)), Rate_opt_power_list, 'kd-', label='Random P')
