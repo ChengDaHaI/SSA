@@ -5,7 +5,7 @@ import numpy as np
 
 # The basic parameters of D-MIMO network
 
-if False:
+if True:
     # In our setting, N' = N, K' = K.
     # the number of transmitter( receiver)
     K = 2
@@ -15,9 +15,9 @@ if False:
     # the number of spatial stream of each node
     L_node = [3,2]
     # the number of total spatial stream
-    L = 0
-    for i in range(K):
-        L = L + L_node[i]
+    L = sum(L_node)
+    # Backhual capacity coefficient
+    C_BH = 3
     # size of finite field
     q = 3
     # the total energy

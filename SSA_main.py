@@ -15,7 +15,7 @@ from SSA_generate_G import *
 # carefully pass parameter into the function
 # if index_eta(i,l,j) == None, the constraint don't exist.!!!
 #--------------------------------#
-def Rate_i_l_Bound(H, P, f, SNR,i,l,j):
+def Rate_i_l_Bound(H, P, f, i,l,j):
 
     #print np.dot(H_j_i, np.expand_dims(p,axis=1))
     # #print 'dimension of multiplication:',(f * np.dot(H_j_i, np.expand_dims(p, axis=1)))
@@ -29,8 +29,11 @@ def Rate_i_l_Bound(H, P, f, SNR,i,l,j):
     #TODO refine the power problem!!!
     #P = P * np.sqrt(SNR)
     p = np.array(P[index_I(i, l) * N:(index_I(i, l) + 1) * N])
-    R_i_j = max(0, np.log2(np.linalg.norm(np.dot(f, np.dot(H_j_i, np.expand_dims(p, axis=1))))**2 * (SNR/K))) * np.log2(q)
-    #R_i_j = max(0, np.log2(np.linalg.norm(np.dot(f, np.dot(H_j_i, np.expand_dims(p, axis=1))))**2)) * np.log2(q)
+    # rate equation of my own paper
+    R_i_j = max(0, np.log2(np.linalg.norm(np.dot(f, np.dot(H_j_i, np.expand_dims(p, axis=1))))**2))
+    # rate equatin of Yang's paper
+    # R_i_j = max(0, np.log2(np.linalg.norm(np.dot(f, np.dot(H_j_i, np.expand_dims(p, axis=1))))**2 * (SNR/K))) * np.log2(q)
+    # R_i_j = max(0, np.log2(np.linalg.norm(np.dot(f, np.dot(H_j_i, np.expand_dims(p, axis=1))))**2)) * np.log2(q)
     return R_i_j
 
 # compute the sum rate when given precoding matrix P_init
@@ -48,6 +51,18 @@ def sum_rate_fun(H, G, P_init, SNR):
         # print fea_F[:,ii*N:(ii+1)*N]
         fea_F[:, ii * M:(ii + 1) * M] = np.expand_dims(d[-1, :] / np.linalg.norm(d[-1, :]), axis=0)
 
+    # scale P_init to satisfy power constraints
+    max_norm = 0
+    p_ind = 0
+    new_norm = 0
+    for i in range(K):
+        new_norm = np.linalg.norm(P_init[p_ind: p_ind + L_node[i] * N], 2)
+        p_ind = p_ind + L_node[i] * N
+        if max_norm < new_norm:
+            max_norm = new_norm
+    # scale the precoing vector of max norm equal to SNR
+    P_init = P_init * (np.sqrt(SNR)/max_norm)
+
     # compute the initial rate
     R_init = [0] * sum(L_node)
     for i in range(K):
@@ -57,7 +72,7 @@ def sum_rate_fun(H, G, P_init, SNR):
                 if index_eta(G, i, l, j) != None:
                     temp.append(Rate_i_l_Bound(H, P_init,
                                                fea_F[:, index_I(j, index_eta(G, i, l, j)) * M:(index_I(j, index_eta(G, i, l, j)) + 1) * M],
-                                               SNR, i, l, j))
+                                               i, l, j))
             R_init[index_I(i, l)] = max(min(temp), 0)
     # print 'Non-Zero rate elements:', len(np.where(np.array(R_init)>0.1)[0])
     sum_rate_init = sum(R_init)
@@ -285,152 +300,6 @@ def Power_optimize(H,G,SNR):
 
     return np.squeeze(R_opt), Sum_rate_init
 
-
-def Bilinear_optimize(H,G):
-
-    # Initialization the alternatively algorithm
-    H_tilde = Augmented_chan_matrix(H, G)
-    # find a feasible non-zero P in the nullspace of H_tilde
-    [s, v, d] = np.linalg.svd(H_tilde)
-    fea_P = d[-1, :]
-    P_init = E_total * fea_P / np.linalg.norm(fea_P, 2)
-    print 'P_init:\n', P_init
-    print 'H_tilde * P_init:\n', np.dot(H_tilde,P_init)
-
-    # compute the constraint matrix for f_{j,l}
-    F_constr_matrix = F_full_constr_matrix(G, H,P_init)
-
-    # find a feasible non-zero F in the left nullspace of F_constr_matrix
-    # 1 represent there are one possible feasible f (we ignore the negtive value here.)
-    # (the constraint matrix is 3 * 2 for each f)
-    fea_F = np.zeros((1,N*sum(L_node)))
-    for ii in range(sum(L_node)):
-        [s,v,d] = np.linalg.svd(np.transpose(F_constr_matrix[ii*N:(ii+1)*N]))
-        #print np.expand_dims(d[-1,:]/np.linalg.norm(d[-1,:]), axis=0)
-        #print fea_F[:,ii*N:(ii+1)*N]
-        fea_F[:,ii*N:(ii+1)*N] = np.expand_dims(d[-1,:]/np.linalg.norm(d[-1,:]), axis=0)
-
-    print 'fea_F * F_constr_matrix:\n', np.dot(fea_F,F_constr_matrix)
-    # compute the initial rate
-    R_init = [0]*sum(L_node)
-
-    for i in range(K):
-        for l in range(L_node[i]):
-            temp = []
-            for j in range(K):
-                if index_eta(G,i, l, j) != None:
-                    temp.append( Rate_i_l_Bound(H, P_init, fea_F[:,index_I(j, index_eta(G,i, l, j))*N:(index_I(j, index_eta(G,i, l, j)) + 1)*N], 'array', i, l, j))
-            R_init[index_I(i, l)] = max(min(temp),0)
-
-    Sum_rate_init = sum(R_init)
-
-
-    # apply cvxpy to solve the relaxed optimization problem
-    # Define the variables
-    P = cvx.Variable(N * sum(L_node),1)
-
-    # compute all constraints
-    Constr = [H_tilde * P == 0, cvx.norm(P,2) <= E_total]
-    if (np.linalg.norm(np.dot(H_tilde,P_init)) >= 1e-8) | (np.linalg.norm(P_init) >= (1 + 1e-3) * E_total):
-        raise Exception('The NullSpace constraint is Wrong!!!')
-    # compute the index set of f that constriant p
-    if True:
-        #index_P = [0]*L_node[0]
-        for ii in range(L_node[0]):
-            temp = []
-            for jj in range(sum(L_node)):
-                #print G[jj,ii]
-                if G[jj,ii] == 0:
-                    temp.append(jj)
-                    # the constraints for P
-
-                    Constr.append( np.dot(fea_F[:,jj*N:(jj+1)*N], H[index_inv(jj)*N:(index_inv(jj)+1)*N][:,0:N]) * P[ii*N:(ii+1)*N] == 0)
-                    # check the constraints
-                    if np.linalg.norm(np.dot(np.dot(fea_F[:, jj * N:(jj + 1) * N], H[index_inv(jj) * N:(index_inv(jj) + 1) * N][:, 0:N]), P_init[ii*N:(ii+1)*N])) >= 1e-5:
-                        raise  Exception('The NullSpace constraint is Wrong!!!')
-                    # tt = np.ones((1,3))
-                    # Constr.append(tt * P[ii * N:(ii + 1) * N] == 0)
-            #index_P[ii] = temp
-
-    #objective function
-    Obj = 0
-    Obj_temp = 0
-    Obj_init = 0
-    temp =cvx.Variable(sum(L_node),1)
-    # compute the objective function
-    len_f_H = []
-    F_H = np.zeros((1,3))
-    for i in range(K):
-        for l in range(L_node[i]):
-            f_H = np.zeros((1,3))
-            for j in range(K):
-                l_prime = index_eta(G,i, l, j)
-                if l_prime != None:
-                    #print fea_F[:, index_I(j, l_prime) * N:(index_I(j, l_prime) + 1) * N]
-                    #print H[j * N:(j + 1) * N][:, i * N:(i + 1) * N]
-                    #print np.dot(fea_F[:, index_I(j, l_prime) * N:(index_I(j, l_prime) + 1) * N], H[j * N:(j + 1) * N][:, i * N:(i + 1) * N])
-                    f_H = np.vstack([f_H, np.dot(fea_F[:,index_I(j,l_prime)*N:(index_I(j,l_prime) + 1)*N],H[j*N:(j+1)*N][:,i*N:(i+1)*N])])
-                    #print f_H
-            f_H = np.delete(f_H,0,0)
-            len_f_H.append(f_H.shape[0])
-            Constr.extend([f_H * P[index_I(i,l)*N : (index_I(i,l) + 1)*N] >= np.ones((f_H.shape[0],1)) * temp[index_I(i,l)]])
-            F_H = np.concatenate((F_H,f_H),axis=0)
-            Obj = Obj + cvx.min_entries(f_H * P[index_I(i,l)*N : (index_I(i,l) + 1)*N])
-            Obj_init = Obj_init + min(np.abs(np.dot(f_H, P_init[index_I(i,l)*N : (index_I(i,l) + 1)*N])))
-
-    F_H = np.delete(F_H,0,0)
-    Obj_temp = cvx.sum_entries(temp)
-    # solve the maximization problem
-    #Object = cvx.Maximize(Obj)
-    Object = cvx.Maximize(Obj_temp)
-    Prob = cvx.Problem(Object, Constr)
-    Prob.solve(solver = cvx.MOSEK, verbose=True)
-
-    print 'Problme status:',Prob.status
-    print 'optimal objective value',Prob.value
-    print 'inital objective value:',Obj_init
-    P_opt = (P.value).A
-    #P_opt = E_total * P_opt / np.linalg.norm(P_opt, 2)
-
-    # check the constraints
-    print 'Norm(P_opt - P_init):\n', np.linalg.norm(P_opt) - np.linalg.norm(P_init)
-    print 'H_tild * P_opt:\n', np.dot(H_tilde,P_opt)
-    print 'the optimal precoding vector:\n',np.squeeze(P_opt)
-    print 'the l_2 norm of P:\n', np.linalg.norm(P_opt,2)
-    print 'fea_F * F_constr_matrix:\n', np.dot(fea_F,F_full_constr_matrix(G, H,np.squeeze(P_opt)))
-
-
-    # compute the true sum rate using Rate_i_l_Bound() function
-    R_opt = [0] * sum(L_node)
-
-    for i in range(K):
-        for l in range(L_node[i]):
-            temp = []
-            for j in range(K):
-                if index_eta(G, i, l, j) != None:
-                    temp.append(Rate_i_l_Bound(H, np.squeeze(P_opt), fea_F[:, index_I(j, index_eta(G, i, l, j)) * N:(index_I(j, index_eta(G, i, l,j)) + 1) * N], 'array', i, l, j))
-            R_opt[index_I(i, l)] = max(min(temp), 0)
-
-    Sum_R_opt = sum(R_opt)
-
-    # compute the true sum rate using the objective function
-    if True:
-        R_opt = 0
-        Sum_R_init = 0
-        for ii in range(len(len_f_H)):
-            #print F_H[sum(len_f_H[0:ii]):sum(len_f_H[0:ii+1])]
-            # print P_init[ii * N: (ii + 1) * N]
-            R_i_l = np.log2(min(np.power(
-                    np.dot(F_H[sum(len_f_H[0:ii]):sum(len_f_H[0:ii+1])], P_opt[ii * N: (ii + 1) * N]),2))* SNR) * np.log2(q)
-            R_i_l_init = np.log2(min(np.power(
-                    np.dot(F_H[sum(len_f_H[0:ii]):sum(len_f_H[0:ii+1])], P_init[ii * N: (ii + 1) * N]),2)) * SNR) * np.log2(q)
-            #print R_i_l
-            R_opt = R_opt + max(R_i_l, 0)
-            Sum_R_init = Sum_R_init + max(R_i_l_init,0)
-        if type(R_opt) != int:
-            R_opt = R_opt.tolist()[0]
-
-    return Sum_R_opt,  Sum_rate_init , R_opt, Sum_R_init
 
 
 def Precoding_Direction_optimize(H,G, Beta, SNR, iter):
@@ -671,7 +540,7 @@ def sum_rate_optimize_beta_precoding(G,H, SNR):
     sum_rate_opt_vec, opt_P = precoding_vector_optimize_DE(H, G, beta_test, SNR)
     t1 = time.time()
     print 'Time cost of coefficient optimization:', (t1 - t0)
-    print 'optmized P vector', opt_P
+    # print 'optmized P vector', opt_P
     '''
     # optimize Beta with differential evolution algorithm
     diff_evolu_func_test = lambda beta_coeff: -precoding_vector_beta_optimize_DE(H, G, np.append(beta_coeff[0:beta_free],[1]*0),np.append(beta_coeff[beta_free:beta_free+0], opt_P), SNR)
@@ -894,19 +763,21 @@ if __name__ == '__main__':
 
     #print 'channel matrix:\n', H
     #print Bilinear_optimize(H,G)
-#    print Power_optimize(H,G)
-    SNR = [1e2* K, 1e3* K, 1e4* K, 1e5* K, 1e6* K]
-    #SNR = [1e5* K,1e6 * K]
+    # print Power_optimize(H,G)
+    # SNR = [10**1, 10**1.5, 10**2, 10**2.5, 10**3, 10**3.5, 1e4]
+    SNR = [10 ** 1,10 ** 1.25, 10 ** 1.5, 10 ** 1.75, 10 ** 2, 10 ** 2.25, 10 ** 2.5, 10 ** 2.75, 10 ** 3,10 ** 3.25, 10 ** 3.5]
+    # SNR = [10**3, 1e4]
     Rate_pow_opt_list = [0] * len(SNR)
     Rate_opt_list = [0] * len(SNR)
     Rate_init_list = [0] * len(SNR)
     Rate_opt_power_list = [0] * len(SNR)
-    iter = 50
+    iter = 500
     print 'Parent Process %s.' % os.getpid()
     p = Pool(20)
 
     for i in range(len(SNR)):
         snr = SNR[i]
+        print 'SNR:', 10 * np.log10(snr), 'dB'
         rate0 = 0
         rate1 = 0
         rate2 = 0
@@ -918,14 +789,12 @@ if __name__ == '__main__':
             np.random.seed()
             # random channel matrix
             H = np.random.randn(K*M, K*N)
-            print 'First elements of H:',H[0,0]
-            print 'SNR:',10 * np.log10(snr),'dB,No.',ii,'channel:'
             # res = sum_rate_optimize_beta_precoding(G, H, snr)
-            #res = p.apply_async(sum_rate_optimize_beta_precoding, (G, H, snr))
+            res = p.apply_async(sum_rate_optimize_beta_precoding, (G, H, snr))
             #res = p.apply_async(generation_matrix_optimize, (np.array(list(G_2Full) + list(G_2Full_2)),H, snr))
 
             #res_G_opt = general_G_optimize(H, snr)
-            res = p.apply_async(general_G_optimize, (H, snr))
+            # res = p.apply_async(general_G_optimize, (H, snr))
             multiple_res.append(res)
         t2 = time.time()
         print "Total time cost:", (t2-t1),'s.'
@@ -934,17 +803,18 @@ if __name__ == '__main__':
             rate0 = rate0 + sum_rate_opt
             rate1 = rate1 + sum_rate_init
             rate2 = rate2 + opt_G_ind
-        Rate_opt_list[i]  = rate0/iter
-        Rate_init_list[i] = rate1/iter
-        Rate_opt_power_list[i] = rate2/iter
-
+        Rate_opt_list[i]  = min(rate0/iter, C_BH* np.log2(snr))
+        Rate_init_list[i] = min(rate1/iter, C_BH* np.log2(snr))
+        Rate_opt_power_list[i] = min(rate2/iter, C_BH* np.log2(snr))
+    Full_Result = np.column_stack((10 * np.log10(SNR), Rate_init_list,  Rate_opt_list, Rate_opt_power_list))
+    np.savetxt('/home/haizi/PycharmProjects/SSA/Simu_result/' +'SSA_OPT' + ' K=' + K.__str__() + 'p_beta' + time.ctime() + 'Simu_Data.txt', Full_Result, fmt = '%1.5e')
     #pyplot.plot(10 * np.log10(SNR), Rate_pow_opt_list, 'rd-', label='Suboptimal P&Pow')
 
-    pyplot.plot(10 * np.log10(np.divide(SNR,K)), Rate_init_list, 'b*-', label= 'Init G' )
-    pyplot.plot(10 * np.log10(np.divide(SNR,K)), Rate_opt_list, 'go-', label= 'Opt G')
-    # pyplot.plot(10 * np.log10(np.divide(SNR,K)), Rate_init_list, 'b*-', label='DE P')
-    # pyplot.plot(10 * np.log10(np.divide(SNR,K)), Rate_opt_list, 'go-', label='DE Beta&P')
-    # pyplot.plot(10 * np.log10(np.divide(SNR,K)), Rate_opt_power_list, 'kd-', label='Random P')
+    # pyplot.plot(10 * np.log10(np.divide(SNR,K)), Rate_init_list, 'b*-', label= 'Init G' )
+    # pyplot.plot(10 * np.log10(np.divide(SNR,K)), Rate_opt_list, 'go-', label= 'Opt G')
+    pyplot.plot(10 * np.log10(SNR), Rate_init_list, 'b*-', label= 'DE Beta&P')
+    pyplot.plot(10 * np.log10(SNR), Rate_opt_list, 'go-', label= 'DE P')
+    pyplot.plot(10 * np.log10(SNR), Rate_opt_power_list, 'kd-', label='Random P')
     '''
     for i in range(len(SNR)):
         snr = SNR[i]
@@ -1011,4 +881,5 @@ if __name__ == '__main__':
     pyplot.xlabel('SNR/dB')
     pyplot.ylabel('Sum Rate/bps')
     pyplot.legend(loc = 'upper left')
+    pyplot.savefig('/home/haizi/PycharmProjects/SSA/Simu_result/' +'SSA_OPT'+ ' K=' + K.__str__() + ' C_BH ' + C_BH.__str__() + ' iter =' + iter.__str__() + 'p_beta' + time.ctime() + 'fig', format = 'eps')
     pyplot.show()
