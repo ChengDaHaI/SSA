@@ -5,7 +5,7 @@ import numpy as np
 
 # The basic parameters of D-MIMO network
 
-if True:
+if False:
     # In our setting, N' = N, K' = K.
     # the number of transmitter( receiver)
     K = 2
@@ -16,8 +16,7 @@ if True:
     L_node = [3,2]
     # the number of total spatial stream
     L = sum(L_node)
-    # Backhual capacity coefficient
-    C_BH = 3
+
     # size of finite field
     q = 3
     # the total energy
@@ -417,7 +416,7 @@ else:
     # SNR = E_total/(N_0*K)
 
     # NC generator matrix
-    if True:#G_1
+    if False:#G_1
 
         G = np.array([[1, 0, 0, 1, 0, 1, 0],
                       [0, 1, 0, 0, 1, 0, 0],
@@ -446,7 +445,7 @@ else:
         '''
     else:#G_2
 
-        G = np.array([[1, 0, 0, 1, 0, 1, 0],
+        G_adjacent = np.array([[1, 0, 0, 1, 0, 1, 0],
                       [0, 1, 0, 0, 1, 0, 0],
                       [0, 0, 1, 0, 0, 0, 1],
                       [0, 0, 1, 1, 0, 0, 0],

@@ -1,4 +1,4 @@
-import cvxpy as cvx
+# import cvxpy as cvx
 import os, time
 import matplotlib.pyplot as pyplot
 from multiprocessing import Pool
@@ -183,6 +183,7 @@ def F_full_constr_matrix(G, H,P):
         F_constr_matrix[18:21, :] = F_constr_mat(G, H, P, 2, 1)
     return F_constr_matrix
 
+'''
 def Power_optimize(H,G,SNR):
     # Initialization the alternatively algorithm
     H_tilde = Augmented_chan_matrix(H, G)
@@ -299,7 +300,7 @@ def Power_optimize(H,G,SNR):
     print 'final computed rate:', np.squeeze(R_opt), Sum_rate_init
 
     return np.squeeze(R_opt), Sum_rate_init
-
+'''
 
 
 def Precoding_Direction_optimize(H,G, Beta, SNR, iter):
@@ -400,7 +401,7 @@ def precoding_vector_optimize_DE(H, G, Beta_init, SNR):
     Beta_init = list(Beta_init)
     if K == 3:
         # Beta = list(np.random.rand(10))
-
+        '''
         Beta_init.insert(5, 1)
         Beta_init.insert(6, 1)
         # compute the two constrainted beta,  i.e., beta_6 and beta_7
@@ -414,7 +415,7 @@ def precoding_vector_optimize_DE(H, G, Beta_init, SNR):
         Beta_init[1] = Beta_init[8] * G[5][0] / G[5][5]
         Beta_init[2] = Beta_init[5] * G[1][4] / G[1][1]
         Beta_init[6] = Beta_init[5] * Beta_init[8] * G[4][4] / (Beta_init[7] * G[4][5])
-        '''
+
     H_tilde = Augmented_chan_matrix(H, G, G_extra, Beta_init)
     # find the nullspace of H_tilde
     [s, v, d] = np.linalg.svd(H_tilde)
@@ -443,7 +444,7 @@ def precoding_vector_beta_optimize_DE(H, G, Beta_init, vect_coeff, SNR):
     Beta_init = list(Beta_init)
     if K == 3:
         # Beta = list(np.random.rand(10))
-
+        '''
         Beta_init.insert(5, 1)
         Beta_init.insert(6, 1)
         # compute the two constrainted beta,  i.e., beta_6 and beta_7
@@ -457,7 +458,7 @@ def precoding_vector_beta_optimize_DE(H, G, Beta_init, vect_coeff, SNR):
         Beta_init[1] = Beta_init[8] * G[5][0] / G[5][5]
         Beta_init[2] = Beta_init[5] * G[1][4] / G[1][1]
         Beta_init[6] = Beta_init[5] * Beta_init[8] * G[4][4] / (Beta_init[7] * G[4][5])
-        '''
+
     H_tilde = Augmented_chan_matrix(H, G, G_extra, Beta_init)
     # find the nullspace of H_tilde
     [s, v, d] = np.linalg.svd(H_tilde)
@@ -489,7 +490,7 @@ def sum_rate_optimize_beta_precoding(G,H, SNR):
     Beta_init = [1] * (beta_free )
     if K == 3:
         # Beta = list(np.random.rand(10))
-
+        '''
         Beta_init.insert(5, 1)
         Beta_init.insert(6, 1)
         # compute the two constrainted beta,  i.e., beta_6 and beta_7
@@ -503,7 +504,7 @@ def sum_rate_optimize_beta_precoding(G,H, SNR):
         Beta_init[1] = Beta_init[8] * G[5][0] / G[5][5]
         Beta_init[2] = Beta_init[5] * G[1][4] / G[1][1]
         Beta_init[6] = Beta_init[5]  * Beta_init[8] * G[4][4] / (Beta_init[7] * G[4][5])
-        '''
+
     # ********************
     # just for test
     # H_temp = np.zeros((M,K*N))
@@ -579,6 +580,11 @@ def generation_matrix_optimize(G_Full,H, SNR):
 
     sum_rate_opt_G = 0
     sum_rate_init = 0
+    G_baseline = np.array([[1, 0, 0, 1, 0],
+                          [0, 1, 0, 0, 1],
+                          [0, 0, 1, 0, 0],
+                          [0, 0, 1, 1, 0],
+                          [1, 0 ,0, 0, 1]])
     global G, G_extra
     # here we just assume K*N = 6.
     for i in range(num_G):
@@ -617,7 +623,7 @@ def generation_matrix_optimize(G_Full,H, SNR):
             sum_rate_opt_beta_vec = -diff_evolu_res.fun
             print 'Time cost of beta&coefficient optimization', (t2 - t1)
 
-            if i == 0:
+            if np.all(G) == np.all(G_baseline):
                 sum_rate_init = sum_rate_opt_beta_vec
             sum_rate_opt_G = max(sum_rate_opt_G, sum_rate_opt_beta_vec)
             # return sum_rate_opt_beta_vec, sum_rate_opt_vec, sum_rate_init
@@ -737,6 +743,7 @@ def general_G_optimize(H, SNR):
     # the number of all possible G_full
     num_G_full = num_G_l ** K
     # find the optimal G by brute-force, and its index
+    sum_rate_init_G = 0
     sum_rate_opt_G = 0
     opt_ind_G =0
     # specify the row list of G_adj and G_extra
@@ -750,12 +757,18 @@ def general_G_optimize(H, SNR):
             G_adj = G_comp[G_row_list,:]
             G_ext = G_comp[G_ext_list,:]
             sum_rate_temp = general_G_bete_vec_optimize(G_adj, G_ext, H, SNR, is_beta_ones=True)
+            # choose the G_adjacent as comparison
+            if np.all(G_adj) == np.all(G_adjacent):
+                sum_rate_init_G = sum_rate_temp
             if sum_rate_temp > sum_rate_opt_G:
                 sum_rate_opt_G = sum_rate_temp
                 opt_ind_G = ind_G
-    # choose the final G as comparison
-    sum_rate_rdm_G = sum_rate_temp
-    return sum_rate_rdm_G, sum_rate_opt_G, opt_ind_G
+    # with optimal G, compute the sum rate with beta&P DE
+    G_comp = generate_G_complete(opt_ind_G, G_l_full, num_G_l)
+    G_adj = G_comp[G_row_list, :]
+    G_ext = G_comp[G_ext_list, :]
+    sum_rate_opt_G_beta = general_G_bete_vec_optimize(G_adj, G_ext, H, SNR, False)
+    return sum_rate_init_G, sum_rate_opt_G, sum_rate_opt_G_beta
 
 
 if __name__ == '__main__':
@@ -766,12 +779,15 @@ if __name__ == '__main__':
     # print Power_optimize(H,G)
     # SNR = [10**1, 10**1.5, 10**2, 10**2.5, 10**3, 10**3.5, 1e4]
     SNR = [10 ** 1,10 ** 1.25, 10 ** 1.5, 10 ** 1.75, 10 ** 2, 10 ** 2.25, 10 ** 2.5, 10 ** 2.75, 10 ** 3,10 ** 3.25, 10 ** 3.5]
-    # SNR = [10**3, 1e4]
+    # SNR = [10 ** 3.25, 10 ** 3.5, 10 ** 3.75]
+
     Rate_pow_opt_list = [0] * len(SNR)
     Rate_opt_list = [0] * len(SNR)
     Rate_init_list = [0] * len(SNR)
     Rate_opt_power_list = [0] * len(SNR)
     iter = 500
+    # Backhual capacity coefficient
+    C_BH = 5
     print 'Parent Process %s.' % os.getpid()
     p = Pool(20)
 
@@ -790,11 +806,11 @@ if __name__ == '__main__':
             # random channel matrix
             H = np.random.randn(K*M, K*N)
             # res = sum_rate_optimize_beta_precoding(G, H, snr)
-            res = p.apply_async(sum_rate_optimize_beta_precoding, (G, H, snr))
-            #res = p.apply_async(generation_matrix_optimize, (np.array(list(G_2Full) + list(G_2Full_2)),H, snr))
-
-            #res_G_opt = general_G_optimize(H, snr)
-            # res = p.apply_async(general_G_optimize, (H, snr))
+            # res = p.apply_async(sum_rate_optimize_beta_precoding, (G_adjacent, H, snr))
+            # res = p.apply_async(generation_matrix_optimize, (np.array(list(G_2Full) + list(G_2Full_2)),H, snr))
+            # res = generation_matrix_optimize(np.array(list(G_2Full) + list(G_2Full_2)), H, snr)
+            # res_G_opt = general_G_optimize(H, snr)
+            res = p.apply_async(general_G_optimize, (H, snr))
             multiple_res.append(res)
         t2 = time.time()
         print "Total time cost:", (t2-t1),'s.'
@@ -807,11 +823,13 @@ if __name__ == '__main__':
         Rate_init_list[i] = min(rate1/iter, C_BH* np.log2(snr))
         Rate_opt_power_list[i] = min(rate2/iter, C_BH* np.log2(snr))
     Full_Result = np.column_stack((10 * np.log10(SNR), Rate_init_list,  Rate_opt_list, Rate_opt_power_list))
-    np.savetxt('/home/haizi/PycharmProjects/SSA/Simu_result/' +'SSA_OPT' + ' K=' + K.__str__() + 'p_beta' + time.ctime() + 'Simu_Data.txt', Full_Result, fmt = '%1.5e')
-    #pyplot.plot(10 * np.log10(SNR), Rate_pow_opt_list, 'rd-', label='Suboptimal P&Pow')
-
-    # pyplot.plot(10 * np.log10(np.divide(SNR,K)), Rate_init_list, 'b*-', label= 'Init G' )
-    # pyplot.plot(10 * np.log10(np.divide(SNR,K)), Rate_opt_list, 'go-', label= 'Opt G')
+    np.savetxt('/home/haizi/PycharmProjects/SSA/Simu_result/' +'SSA_OPT' + ' K=' + K.__str__() + ' C_BH ' + C_BH.__str__() + ' iter =' + iter.__str__() + time.ctime() + 'Simu_Data.txt', Full_Result, fmt = '%1.5e')
+    # np.savetxt(
+    #     '/home/haizi/PycharmProjects/SSA/Simu_result/' + 'SSA_G_OPT' + ' K=' + K.__str__() + ' C_BH ' + C_BH.__str__() + ' iter =' + iter.__str__() + time.ctime() + 'Simu_Data.txt',
+    #     Full_Result, fmt='%1.5e')
+    # pyplot.plot(10 * np.log10(SNR), Rate_opt_power_list, 'rd-', label='Opt G & DE Beta')
+    # pyplot.plot(10 * np.log10(SNR), Rate_init_list, 'b*-', label= ' Init G' )
+    # pyplot.plot(10 * np.log10(SNR), Rate_opt_list, 'go-', label= ' Opt G' )
     pyplot.plot(10 * np.log10(SNR), Rate_init_list, 'b*-', label= 'DE Beta&P')
     pyplot.plot(10 * np.log10(SNR), Rate_opt_list, 'go-', label= 'DE P')
     pyplot.plot(10 * np.log10(SNR), Rate_opt_power_list, 'kd-', label='Random P')
