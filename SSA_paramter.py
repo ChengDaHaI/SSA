@@ -5,7 +5,7 @@ import numpy as np
 
 # The basic parameters of D-MIMO network
 
-if False:
+if True:
     # In our setting, N' = N, K' = K.
     # the number of transmitter( receiver)
     K = 2
@@ -13,7 +13,7 @@ if False:
     N = 3 # transmitter
     M = 3 # receiver
     # the number of spatial stream of each node
-    # L_node = [3,2]
+    L_node = [3,2]
 
     # size of finite field
     q = 3
@@ -22,17 +22,17 @@ if False:
     N_0 = 1
 
     # NC generator matrix
-    # G = np.array([[1, 0, 0, 1, 0],
-    #               [0, 1, 0, 0, 1],
-    #               [0, 0, 1, 0, 0],
-    #               [0, 0, 1, 1, 0],
-    #               [1, 0 ,0, 0, 1]])
-    # G_extra = np.array([[0,1,0,0,0]])
+    G = np.array([[1, 0, 0, 1, 0],
+                  [0, 1, 0, 0, 1],
+                  [0, 0, 1, 0, 0],
+                  [0, 0, 1, 1, 0],
+                  [1, 0 ,0, 0, 1]])
+    G_extra = np.array([[0,1,0,0,0]])
 
     # test IA
-    L_node = [2, 1]
-    G = np.array([[1,0,0],[0,1,0],[0,0,1]])
-    G_extra = np.array([[0,0,1],[1,0,0],[0,1,0]])
+    # L_node = [2, 1]
+    # G = np.array([[1,0,0],[0,1,0],[0,0,1]])
+    # G_extra = np.array([[0,0,1],[1,0,0],[0,1,0]])
 
     # the number of total spatial stream
     L = sum(L_node)

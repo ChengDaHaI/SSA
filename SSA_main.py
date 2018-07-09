@@ -2,10 +2,11 @@
 import os, time
 import matplotlib.pyplot as pyplot
 from multiprocessing import Pool
+import scipy
 from scipy import optimize
 from SSA_paramter import *
 from SSA_generate_G import *
-
+from SSA_fading_channel_model import chanMatrix
 
 
 
@@ -556,7 +557,7 @@ def sum_rate_optimize_beta_precoding(G,H, SNR):
     '''
     # optimize Beta & P vector with differential evolution algorithm
     diff_evolu_func = lambda beta_coeff: -precoding_vector_beta_optimize_DE(H, G,beta_coeff[0:beta_free], beta_coeff[beta_free:beta_free+dimen_Null], SNR)
-    beta_ranges = ((0.1, 5.0),) * (beta_free - 0 ) + ((1.0,1.0),) * (0) + ((0.0,1.0),) * (dimen_Null - 0) + ((0.0,0.0),) * (0)
+    beta_ranges = ((0.1, 5.0),) * (beta_free - 0 ) + ((1.0,1.0),) * (0) + ((0.0, 10),) * (dimen_Null - 0) + ((0.0,0.0),) * (0)
     diff_evolu_res = optimize.differential_evolution(diff_evolu_func, beta_ranges, maxiter=100, disp=False, polish=True)
 
     t2 = time.time()
@@ -622,7 +623,7 @@ def generation_matrix_optimize(G_Full,H, SNR):
             '''
             t1 = time.time()
             diff_evolu_func = lambda beta_coeff: -precoding_vector_beta_optimize_DE(H, G, beta_coeff[0:beta_free], beta_coeff[beta_free:beta_free+dimen_Null], SNR)
-            beta_ranges = ((0.1, 5.0),) * beta_free + ((0,10),) * dimen_Null
+            beta_ranges = ((0.1, 5.0),) * beta_free + ((0, 10),) * dimen_Null
             diff_evolu_res = optimize.differential_evolution(diff_evolu_func, beta_ranges, maxiter = 20, disp= False)
             t2 = time.time()
             print 'Beta & Vect_coeff Differential Evolution Status:', diff_evolu_res.success
@@ -793,20 +794,21 @@ if __name__ == '__main__':
     #print 'channel matrix:\n', H
     #print Bilinear_optimize(H,G)
     # print Power_optimize(H,G)
-    # SNR = [10**1, 10**1.5, 10**2, 10**2.5, 10**3, 10**3.5, 1e4]
+    SNR = [10**2, 10**2.5, 10**3, 10**3.5,  1e4, 10**4.5, 10**5]
     # SNR = [10 ** 1,10 ** 1.25, 10 ** 1.5, 10 ** 1.75, 10 ** 2, 10 ** 2.25, 10 ** 2.5, 10 ** 2.75, 10 ** 3,10 ** 3.25, 10 ** 3.5]
-    SNR = [10 ** 1.25]
+    # SNR = [10 ** 5.0]
 
     Rate_pow_opt_list = [0] * len(SNR)
     Rate_opt_list = [0] * len(SNR)
     Rate_init_list = [0] * len(SNR)
     Rate_opt_power_list = [0] * len(SNR)
-    iter = 100
+    iter = 2000
     # Backhual capacity coefficient
-    C_BH = 7
+    C_BH = 5
     print 'Parent Process %s.' % os.getpid()
     p = Pool(20)
-
+    # set random seed
+    np.random.seed()
     for i in range(len(SNR)):
         snr = SNR[i]
         print 'SNR:', 10 * np.log10(snr), 'dB'
@@ -816,15 +818,20 @@ if __name__ == '__main__':
         multiple_res = []
         # multiple_res = [p.apply_async(precoding_vector_optimize_DE, (H, G, snr)) for i in range(iter)]
         t1 = time.time()
+
         for ii in range(iter):
-            # set random seed
-            np.random.seed()
+
             # random channel matrix
-            H = np.random.randn(K*M, K*N)
+            H = chanMatrix(M, N, K, K)
+            # H = np.random.randn(K*M, K*N)
+
+            # 2*2 Optimization
             # res = sum_rate_optimize_beta_precoding(G, H, snr)
-            # res = p.apply_async(sum_rate_optimize_beta_precoding, (G_adjacent, H, snr))
+            res = p.apply_async(sum_rate_optimize_beta_precoding, (np.array(list(G) + list(G_extra)), H, snr))
             # res = p.apply_async(generation_matrix_optimize, (np.array(list(G_2Full) + list(G_2Full_2)),H, snr))
             # res = generation_matrix_optimize(np.array(list(G_2Full) + list(G_2Full_2)), H, snr)
+
+            # 3*3 Optimization
             # res_G_opt = general_G_optimize(H, snr)
             # test G optimzation
             # G_adjacent = np.array([[1, 0, 0, 0, 0, 1, 0],
@@ -841,7 +848,7 @@ if __name__ == '__main__':
             # res = general_G_bete_vec_optimize(G_adjacent, G_extra, H, SNR, True)
             # print 'Sum rate without beta optimization:', res
             # raise Exception('Termination!')
-            res = p.apply_async(general_G_optimize, (H, snr))
+            # res = p.apply_async(general_G_optimize, (H, snr))
             multiple_res.append(res)
         t2 = time.time()
         print "Total time cost:", (t2-t1),'s.'
@@ -854,19 +861,19 @@ if __name__ == '__main__':
         Rate_init_list[i] = min(rate1/iter, C_BH* np.log2(snr))
         Rate_opt_power_list[i] = min(rate2/iter, C_BH* np.log2(snr))
     Full_Result = np.column_stack((10 * np.log10(SNR), Rate_init_list,  Rate_opt_list, Rate_opt_power_list))
-    # np.savetxt('/home/haizi/PycharmProjects/SSA/Simu_result/' +'SSA_OPT' + ' K=' + K.__str__() + ' C_BH ' + C_BH.__str__() + ' iter =' + iter.__str__() + time.ctime() + 'Simu_Data.txt', Full_Result, fmt = '%1.5e')
-    np.savetxt(
-        '/home/haizi/PycharmProjects/SSA/Simu_result/' + 'SSA_G_OPT' + ' K=' + K.__str__() + ' C_BH ' + C_BH.__str__() + ' iter =' + iter.__str__() + time.ctime() + 'Simu_Data.txt',
-        Full_Result, fmt='%1.5e')
-    pyplot.plot(10 * np.log10(SNR), Rate_opt_power_list, 'rd-', label='Opt G & DE Beta')
-    pyplot.plot(10 * np.log10(SNR), Rate_init_list, 'b*-', label= ' Init G' )
-    pyplot.plot(10 * np.log10(SNR), Rate_opt_list, 'go-', label= ' Opt G' )
-    # pyplot.plot(10 * np.log10(SNR), Rate_init_list, 'b*-', label= 'DE Beta&P')
-    # pyplot.plot(10 * np.log10(SNR), Rate_opt_list, 'go-', label= 'DE P')
-    # pyplot.plot(10 * np.log10(SNR), Rate_opt_power_list, 'kd-', label='Random P')
+    np.savetxt('/home/haizi/PycharmProjects/SSA/Simu_result/' +'SSA_OPT' + ' K=' + K.__str__() + ' C_BH ' + C_BH.__str__() + ' iter =' + iter.__str__() + time.ctime() + 'Simu_Data.txt', Full_Result, fmt = '%1.5e')
+    # np.savetxt('/home/haizi/PycharmProjects/SSA/Simu_result/' + 'SSA_G_OPT' + ' K=' + K.__str__() + ' C_BH ' + C_BH.__str__() + ' iter =' + iter.__str__() + time.ctime() + 'Simu_Data.txt',
+    #     Full_Result, fmt='%1.5e')
+    # pyplot.plot(10 * np.log10(SNR), Rate_opt_power_list, 'rd-', label='Opt G & DE Beta')
+    # pyplot.plot(10 * np.log10(SNR), Rate_init_list, 'b*-', label= ' Init G' )
+    # pyplot.plot(10 * np.log10(SNR), Rate_opt_list, 'go-', label= ' Opt G' )
+    pyplot.plot(10 * np.log10(SNR), Rate_init_list, 'b*-', label= 'G-SSA-PNC-Beta&P')
+    pyplot.plot(10 * np.log10(SNR), Rate_opt_list, 'go-', label= 'G-SSA-PNC-P')
+    pyplot.plot(10 * np.log10(SNR), Rate_opt_power_list, 'kd-', label='SSA-PNC')
 
     pyplot.xlabel('SNR/dB')
     pyplot.ylabel('Sum Rate/bps')
     pyplot.legend(loc = 'upper left')
     pyplot.savefig('/home/haizi/PycharmProjects/SSA/Simu_result/' +'SSA_OPT'+ ' K=' + K.__str__() + ' C_BH ' + C_BH.__str__() + ' iter =' + iter.__str__() + 'p_beta' + time.ctime() + 'fig', format = 'eps')
     pyplot.show()
+
