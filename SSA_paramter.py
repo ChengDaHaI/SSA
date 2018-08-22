@@ -12,8 +12,7 @@ if True:
     # the number of antennas of each node
     N = 3 # transmitter
     M = 3 # receiver
-    # the number of spatial stream of each node
-    L_node = [3,2]
+
 
     # size of finite field
     q = 3
@@ -21,6 +20,8 @@ if True:
     E_total = 1e4
     N_0 = 1
 
+    # the number of spatial stream of each node
+    L_node = [3, 2]
     # NC generator matrix
     G = np.array([[1, 0, 0, 1, 0],
                   [0, 1, 0, 0, 1],

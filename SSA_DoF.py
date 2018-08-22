@@ -20,8 +20,9 @@ def rate_DoF(M, N, K, J, H, SNR):
         K_list = range(K)
         K_list.remove(j)
         for k in K_list:
-            SINR = SINR + (np.sqrt(SNR)/N)**2 * np.dot(H[j * M:(j + 1) * M][:, k * N:(k + 1) * N], np.transpose(H[j * M:(j + 1) * M][:, k * N:(k + 1) * N]))
-        sign, logdet =  np.linalg.slogdet(np.ones((M, M)) + np.sqrt( SNR)**2/N**2 * np.dot(np.dot(np.transpose(H_jj), np.linalg.inv(SINR)), H_jj) )
+            SINR = SINR + (np.sqrt(SNR/N))**2 * np.dot( np.dot(H[j * M:(j + 1) * M][:, k * N:(k + 1) * N], np.ones((M,1))), np.transpose(np.dot(H[j * M:(j + 1) * M][:, k * N:(k + 1) * N], np.ones((M,1)))))
+        # sign, logdet =  np.linalg.slogdet(np.ones((M, M)) + np.sqrt( SNR/N)**2 * np.dot(np.dot(np.transpose(H_jj), np.linalg.inv(SINR)), H_jj) )
+        sign, logdet =  np.linalg.slogdet(np.ones((1, 1)) + np.sqrt( SNR/N)**2 * np.dot(np.dot(np.transpose(np.dot(H_jj, np.ones((M,1)))), np.linalg.inv(SINR)), np.dot(H_jj, np.ones((M,1)))) )
         if sign == 1:
             sum_rate = sum_rate + 0.5 * logdet
         elif sign == 0:
@@ -39,7 +40,10 @@ if __name__ == "__main__":
     N = 3
     K = 2
     J = 2
-    SNR = [10**1, 10**2, 10**2.5, 10**3, 10**3.5,  1e4, 10**4.5, 10**5]
+    # SNR = [10 ** 1,10 ** 1.25, 10 ** 1.5, 10 ** 1.75, 10 ** 2, 10 ** 2.25, 10 ** 2.5, 10 ** 2.75, 10 ** 3,10 ** 3.25, 10 ** 3.5]
+    # SNR = [10**1, 10**2, 10**2.5, 10**3, 10**3.5,  1e4, 10**4.5, 10**5]
+    # SNR = [10**1, 10**2, 10**2.5, 10**3, 10**3.5,  1e4, 10**4.5, 10**5, 10**5.5, 10**6, 10**6.5,  1e7, 10**7.5, 10**8]
+    SNR = [10 ** 0.5, 10 ** 0.75]
     iter = 2000
     p = Pool(20)
     dof_sum_rate_list = []
@@ -49,8 +53,8 @@ if __name__ == "__main__":
         dof_rate = 0
         multiple_res = []
         for i in range(iter):
-            # H_gaus = np.random.randn(K * M, K * N)
-            H_gaus = chanMatrix(M, N, K, J)
+            H_gaus = np.random.randn(K * M, K * N)
+            # H_gaus = chanMatrix(M, N, K, J)
             # H_gaus = np.eye(K * M)
             res = p.apply_async(rate_DoF, (M, N, K, J, H_gaus, snr))
             # dof_rate = rate_DoF(M, N, K, J, H_gaus, snr)

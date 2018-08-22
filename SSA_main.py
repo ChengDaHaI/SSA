@@ -794,9 +794,9 @@ if __name__ == '__main__':
     #print 'channel matrix:\n', H
     #print Bilinear_optimize(H,G)
     # print Power_optimize(H,G)
-    SNR = [10**2, 10**2.5, 10**3, 10**3.5,  1e4, 10**4.5, 10**5]
+    # SNR = [10**2, 10**2.5, 10**3, 10**3.5,  1e4, 10**4.5, 10**5]
     # SNR = [10 ** 1,10 ** 1.25, 10 ** 1.5, 10 ** 1.75, 10 ** 2, 10 ** 2.25, 10 ** 2.5, 10 ** 2.75, 10 ** 3,10 ** 3.25, 10 ** 3.5]
-    # SNR = [10 ** 5.0]
+    SNR = [10 ** 8.5]
 
     Rate_pow_opt_list = [0] * len(SNR)
     Rate_opt_list = [0] * len(SNR)
@@ -827,7 +827,8 @@ if __name__ == '__main__':
 
             # 2*2 Optimization
             # res = sum_rate_optimize_beta_precoding(G, H, snr)
-            res = p.apply_async(sum_rate_optimize_beta_precoding, (np.array(list(G) + list(G_extra)), H, snr))
+            res = p.apply_async(sum_rate_optimize_beta_precoding, (G, H, snr))
+            # res = p.apply_async(sum_rate_optimize_beta_precoding, (np.array(list(G) + list(G_extra)), H, snr))
             # res = p.apply_async(generation_matrix_optimize, (np.array(list(G_2Full) + list(G_2Full_2)),H, snr))
             # res = generation_matrix_optimize(np.array(list(G_2Full) + list(G_2Full_2)), H, snr)
 

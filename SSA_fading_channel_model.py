@@ -80,8 +80,8 @@ def chanMatrix(M, N, J, K):
     # simulation parameters
     alpha_min = 0.1
     alpha_max = 0.2
-    d_min = 2
-    d_max = 20
+    d_min = 10
+    d_max = 100
     # channel matrix
     H = np.zeros((K*M, K*N))
 
